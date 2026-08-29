@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "phone-harness": {
+      "command": "python",
+      "args": ["-m", "phone_harness.mcp_server"]
+    }
+  }
+}

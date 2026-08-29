@@ -1,0 +1,8 @@
+{
+  "name": "phone-harness",
+  "version": "1.0.0",
+  "mcp": {
+    "command": "python",
+    "args": ["-m", "phone_harness.mcp_server"]
+  }
+}

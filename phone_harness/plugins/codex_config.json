@@ -1,0 +1,10 @@
+{
+  "plugins": [
+    {
+      "name": "phone-harness",
+      "type": "mcp",
+      "entrypoint": "python -m phone_harness.mcp_server",
+      "description": "Generation-grounded mobile automation harness for Android and iOS"
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=77.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "universal-phone-harness"
+version = "1.0.0"
+description = "Token-efficient MCP and CLI harness for controlling Android and iOS devices"
+readme = "README.md"
+authors = [{ name = "ZachDreamZ", email = "zachdreamz@users.noreply.github.com" }]
+license = "MIT"
+requires-python = ">=3.10"
+keywords = ["android", "ios", "mcp", "mobile-automation", "ai-agent", "testing"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "adbutils>=2.0.0",
+    "click>=8.0.0",
+    "pillow>=10.0.0",
+    "pydantic>=2.0.0",
+    "requests>=2.28.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+ocr = [
+    "opencv-python>=4.8.0",
+    "rapidocr-onnxruntime>=1.2.0",
+]
+dev = [
+    "build>=1.2.0",
+    "pip-audit>=2.7.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "twine>=5.0.0",
+]
+all = [
+    "build>=1.2.0",
+    "opencv-python>=4.8.0",
+    "pip-audit>=2.7.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "rapidocr-onnxruntime>=1.2.0",
+    "twine>=5.0.0",
+]
+
+[project.scripts]
+phone-harness = "phone_harness.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ZachDreamZ/universal-phone-harness"
+Documentation = "https://github.com/ZachDreamZ/universal-phone-harness#readme"
+Issues = "https://github.com/ZachDreamZ/universal-phone-harness/issues"
+Repository = "https://github.com/ZachDreamZ/universal-phone-harness"
+
+[tool.setuptools.packages.find]
+include = ["phone_harness*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+phone_harness = ["plugins/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

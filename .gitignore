@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build output
+build/
+dist/
+*.egg-info/
+.release-smoke/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Internal execution artifacts
+.pi/
+.superpowers/
+docs/superpowers/
+
+# Local device and benchmark artifacts
+ADBKeyboard.apk
+alex_woods_pfp.png
+dump.xml
+nul
+benchmark.py
+benchmark_complex_v2.py
+benchmark_results.json
+DEEPRESEARCH.md
+SPECIFICATION.md
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak

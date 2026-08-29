@@ -1,0 +1,24 @@
+{
+  "name": "phone-harness",
+  "version": "1.0.0",
+  "description": "Token-efficient mobile automation harness for Android and WebDriverAgent-based iOS devices.",
+  "author": {
+    "name": "ZachDreamZ",
+    "email": "zachdreamz@users.noreply.github.com"
+  },
+  "interface": {
+    "displayName": "Phone Harness",
+    "shortDescription": "Control mobile devices through MCP",
+    "longDescription": "Observe indexed mobile UI trees, ground actions to observation generations, verify postconditions, and control Android or iOS devices through a local MCP server.",
+    "developerName": "ZachDreamZ",
+    "category": "Developer Tools",
+    "defaultPrompt": "Observe my connected mobile phone and help me interact with or test an application.",
+    "capabilities": [
+      "mobile-device-control",
+      "screen-observation",
+      "verified-grounding",
+      "hybrid-ocr-detection",
+      "validated-url-launching"
+    ]
+  }
+}

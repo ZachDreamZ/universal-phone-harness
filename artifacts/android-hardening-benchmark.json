@@ -1,0 +1,173 @@
+{
+  "task": "android-text-correctness-and-performance-hardening",
+  "operations": [
+    "observe",
+    "settings_launch",
+    "search_focus",
+    "type_32",
+    "clear",
+    "back",
+    "home"
+  ],
+  "warmup_samples": 1,
+  "measured_samples": 5,
+  "baseline": {
+    "observe": [
+      2562.314,
+      2563.039,
+      2622.412,
+      2621.626,
+      2636.057
+    ],
+    "settings_launch": [
+      468.614,
+      473.325,
+      492.911,
+      471.021,
+      472.75
+    ],
+    "search_focus": [
+      50.467,
+      51.997,
+      54.694,
+      47.336,
+      55.231
+    ],
+    "type_32": [
+      866.537,
+      934.084,
+      892.845,
+      894.026,
+      883.433
+    ],
+    "clear": [
+      307.404,
+      321.854,
+      297.53,
+      321.183,
+      333.562
+    ],
+    "back": [
+      55.47,
+      47.434,
+      49.423,
+      48.287,
+      46.607
+    ],
+    "home": [
+      43.987,
+      49.816,
+      48.621,
+      43.168,
+      47.658
+    ]
+  },
+  "candidate": {
+    "observe": [
+      2619.463,
+      2604.065,
+      2615.85,
+      2629.741,
+      2594.432
+    ],
+    "settings_launch": [
+      456.949,
+      472.039,
+      458.828,
+      462.75,
+      461.634
+    ],
+    "search_focus": [
+      49.304,
+      51.905,
+      51.624,
+      55.419,
+      52.229
+    ],
+    "type_32": [
+      863.92,
+      897.046,
+      873.101,
+      874.829,
+      836.166
+    ],
+    "clear": [
+      74.316,
+      70.756,
+      78.114,
+      72.435,
+      73.176
+    ],
+    "back": [
+      49.274,
+      47.911,
+      75.312,
+      47.472,
+      49.185
+    ],
+    "home": [
+      43.579,
+      50.319,
+      46.218,
+      52.386,
+      53.937
+    ]
+  },
+  "assertions": {
+    "search_field_found": true,
+    "foreground_package_settings": true,
+    "temporary_text_visible": true,
+    "cleared": true
+  },
+  "blocker": null,
+  "revision": null,
+  "baseline_medians": {
+    "observe": 2621.626,
+    "settings_launch": 472.75,
+    "search_focus": 51.997,
+    "type_32": 892.845,
+    "clear": 321.183,
+    "back": 48.287,
+    "home": 47.658
+  },
+  "candidate_medians": {
+    "observe": 2615.85,
+    "settings_launch": 461.634,
+    "search_focus": 51.905,
+    "type_32": 873.101,
+    "clear": 73.176,
+    "back": 49.185,
+    "home": 50.319
+  },
+  "median_change_percent": {
+    "observe": -0.22,
+    "settings_launch": -2.35,
+    "search_focus": -0.18,
+    "type_32": -2.21,
+    "clear": -77.22,
+    "back": 1.86,
+    "home": 5.58
+  },
+  "overall_median_change_percent": null,
+  "phase": "candidate",
+  "clear_change_percent": -77.22,
+  "overall_note": "Overall gain intentionally null. Only the clear-operation comparison (clear_change_percent) is accepted as a headline metric, and it is explicitly NOT a valid overall gain. The legacy baseline clear is intentionally incorrect; the comparison quantifies command-cost of mandatory correctness work, not an optimization. All other diagnostics are excluded by design.",
+  "implementation": {
+    "baseline": "legacy clear: KEYCODE_MOVE_END + fixed 22-delete burst (pre-fix reproduction)",
+    "candidate": "production AndroidPhoneDevice.clear_text: single host ADB shell call KEYCODE_MOVE_END && --longpress KEYCODE_DEL + bounded 64-delete fallback"
+  },
+  "clear_text_fingerprint_sha256": "bc40b90a9acb139b311ed048850e46607f103e396730afe3a69cf8832a1c623b",
+  "legacy_clear_fingerprint_sha256": "117999de61c65ac0bb3f8710943f9948a6d30094bffd88c59f76490fd143edf1",
+  "measured_at": "2026-08-28T22:44:11.476121+00:00",
+  "clear_change_note": "clear_change_percent compares the legacy clear (intentionally incorrect pre-fix reproduction) against the production clear_text. It measures the command-cost impact of mandatory correctness work only; it is NOT an optimization and NOT a valid overall performance gain.",
+  "device": {
+    "model": "JLN-LX1",
+    "os_version": "Android 12",
+    "screen_resolution": [
+      1080,
+      2388
+    ]
+  },
+  "phase_successful": true,
+  "failed_assertions": []
+}
