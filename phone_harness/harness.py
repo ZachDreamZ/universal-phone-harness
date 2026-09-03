@@ -476,3 +476,28 @@ class PhoneHarness:
         """Returns step budget and task efficiency telemetry."""
         return self.step_guard.get_efficiency_report(optimal_steps=optimal_steps)
 
+    def save_screenshot(
+        self,
+        output_path: str,
+        include_som: bool = False,
+    ) -> Tuple[int, int]:
+        """Captures and saves a phone screenshot directly to a local file. Returns (width, height)."""
+        raw_frame = self.device.capture_frame()
+        if include_som:
+            raw_elements = self.device.dump_hierarchy()
+            elements = TreeSimplifier.filter_and_index_elements(
+                raw_elements=raw_elements,
+                screen_size=(self.device.screen_width, self.device.screen_height),
+                interactive_only=True,
+            )
+            som_img = VisualSoMAnnotator.annotate(
+                raw_frame,
+                elements,
+                mask_passwords=self.config.enable_pii_masking,
+            )
+            som_img.convert("RGB").save(output_path)
+            return som_img.size
+
+        raw_frame.convert("RGB").save(output_path)
+        return raw_frame.size
+

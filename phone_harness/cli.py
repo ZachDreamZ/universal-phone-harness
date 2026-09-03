@@ -226,9 +226,44 @@ def doctor():
     console.print("[bold green][OK] Phone Harness Environment Ready for AI Agents![/bold green]")
 
 
+@cli.command("screenshot")
+@click.argument("output_path", default="screenshot.png")
+@click.option("--som/--no-som", default=False, help="Include Set-of-Marks indexed badges")
+def screenshot_cmd(output_path: str, som: bool):
+    """Captures and saves a phone screenshot locally (.png or .jpg)."""
+    harness = PhoneHarness()
+    w, h = harness.save_screenshot(output_path, include_som=som)
+    mode = "Set-of-Marks" if som else "Raw"
+    console.print(f"[bold green][OK] Saved {mode} screenshot to {output_path} ({w}x{h})[/bold green]")
+
+
+@cli.command("clipboard")
+@click.option("--set", "set_text", default=None, help="Text to copy to device clipboard")
+def clipboard_cmd(set_text: str = None):
+    """Gets or sets the device system clipboard."""
+    harness = PhoneHarness()
+    if set_text is not None:
+        harness.set_clipboard(set_text)
+        console.print(f"[bold green][OK] Set clipboard to: {set_text}[/bold green]")
+    else:
+        content = harness.get_clipboard()
+        console.print(f"[bold green][OK] Clipboard content: {content}[/bold green]")
+
+
+@cli.command("report")
+@click.option("--optimal-steps", default=5, help="Baseline expected steps for the task")
+def report_cmd(optimal_steps: int):
+    """Displays step budget and latency efficiency report."""
+    import json
+    harness = PhoneHarness()
+    rep = harness.get_efficiency_report(optimal_steps=optimal_steps)
+    console.print(Panel(json.dumps(rep, indent=2), title="Phone Harness Efficiency Report"))
+
+
 def main():
     cli()
 
 
 if __name__ == "__main__":
     main()
+

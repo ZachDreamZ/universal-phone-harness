@@ -256,6 +256,33 @@ class PhoneHarnessMCPServer:
                 },
             },
             {
+                "name": "phone_get_clipboard",
+                "description": "Reads text from the device system clipboard (useful for retrieving OTP codes, tokens, or copied links).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
+            {
+                "name": "phone_save_screenshot",
+                "description": "Captures and saves a phone screenshot directly to a local filesystem path (e.g. ./screen.png).",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["output_path"],
+                    "properties": {
+                        "output_path": {
+                            "type": "string",
+                            "description": "Local file path where the screenshot will be saved (.png or .jpg).",
+                        },
+                        "include_som": {
+                            "type": "boolean",
+                            "description": "If true, saves the Set-of-Marks annotated image with element badges instead of raw screenshot.",
+                            "default": False,
+                        },
+                    },
+                },
+            },
+            {
                 "name": "phone_dismiss_dialog",
                 "description": "Auto-detects and responds to system permission or alert dialogs ('allow' | 'deny' | 'dismiss').",
                 "inputSchema": {
@@ -635,6 +662,44 @@ class PhoneHarnessMCPServer:
                     ]
                 }
 
+            elif name == "phone_get_clipboard":
+                clip_text = self.harness.get_clipboard()
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": self._compact_json({"status": "success", "clipboard_text": clip_text}, indent=2),
+                        }
+                    ]
+                }
+
+            elif name == "phone_save_screenshot":
+                output_path = args.get("output_path")
+                if not output_path:
+                    return {
+                        "isError": True,
+                        "content": [{"type": "text", "text": "Missing required argument 'output_path'"}],
+                    }
+                include_som = bool(args.get("include_som", False))
+                w, h = self.harness.save_screenshot(output_path, include_som=include_som)
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": self._compact_json(
+                                {
+                                    "status": "success",
+                                    "saved_path": output_path,
+                                    "width": w,
+                                    "height": h,
+                                    "som_annotated": include_som,
+                                },
+                                indent=2,
+                            ),
+                        }
+                    ]
+                }
+
             elif name == "phone_dismiss_dialog":
                 action = args.get("action", "deny")
                 action_res = self.harness.dismiss_dialog(action=action)
@@ -782,6 +847,172 @@ class PhoneHarnessMCPServer:
                 ],
             }
 
+    def get_resource_definitions(self) -> List[Dict[str, Any]]:
+        """Returns MCP resource definitions matching the official MCP specification."""
+        return [
+            {
+                "uri": "phone://device/status",
+                "name": "Phone Device Status",
+                "description": "Current device telemetry, OS version, active app package, resolution, and connection status.",
+                "mimeType": "application/json",
+            },
+            {
+                "uri": "phone://screen/dom",
+                "name": "Current Screen Compact DOM",
+                "description": "Token-compacted indexed DOM of the active phone screen without executing a mutating action.",
+                "mimeType": "text/plain",
+            },
+            {
+                "uri": "phone://diagnostics/efficiency",
+                "name": "Phone Harness Efficiency & Latency Telemetry",
+                "description": "Aggregated execution telemetry, step budget utilization, and latency metrics.",
+                "mimeType": "application/json",
+            },
+        ]
+
+    def handle_resource_read(self, uri: str) -> Dict[str, Any]:
+        """Reads and returns the content of an MCP resource by URI."""
+        if uri == "phone://device/status":
+            summary = self.harness.device.get_device_summary()
+            return {
+                "contents": [
+                    {
+                        "uri": uri,
+                        "mimeType": "application/json",
+                        "text": self._compact_json(summary.model_dump(), indent=2),
+                    }
+                ]
+            }
+        elif uri == "phone://screen/dom":
+            state = self.harness.last_state or self.harness.observe()
+            return {
+                "contents": [
+                    {
+                        "uri": uri,
+                        "mimeType": "text/plain",
+                        "text": state.compact_dom,
+                    }
+                ]
+            }
+        elif uri == "phone://diagnostics/efficiency":
+            report = self.harness.get_efficiency_report()
+            return {
+                "contents": [
+                    {
+                        "uri": uri,
+                        "mimeType": "application/json",
+                        "text": self._compact_json(report, indent=2),
+                    }
+                ]
+            }
+        else:
+            raise PhoneHarnessError(f"Resource not found: {uri}")
+
+    def get_prompt_definitions(self) -> List[Dict[str, Any]]:
+        """Returns MCP prompt definitions matching the official MCP specification."""
+        return [
+            {
+                "name": "mobile_flow_qa",
+                "description": "Automate end-to-end mobile flow testing with assertion checks and step budget tracking.",
+                "arguments": [
+                    {
+                        "name": "target_flow",
+                        "description": "The mobile user flow to test (e.g. 'Settings Wi-Fi toggle', 'Checkout flow').",
+                        "required": True,
+                    },
+                    {
+                        "name": "expected_outcome",
+                        "description": "What state or message confirms the flow succeeded.",
+                        "required": True,
+                    },
+                ],
+            },
+            {
+                "name": "extract_screen_data",
+                "description": "Extract structured data from the active phone screen according to a target schema.",
+                "arguments": [
+                    {
+                        "name": "data_schema",
+                        "description": "Description of the data fields to extract into JSON.",
+                        "required": True,
+                    },
+                ],
+            },
+            {
+                "name": "troubleshoot_screen",
+                "description": "Inspect and diagnose why an expected element is missing, dialog is blocking, or app crashed.",
+                "arguments": [],
+            },
+        ]
+
+    def handle_prompt_get(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Generates prompt template messages for agent task execution."""
+        if name == "mobile_flow_qa":
+            flow = arguments.get("target_flow", "Target mobile workflow")
+            outcome = arguments.get("expected_outcome", "Expected success state")
+            return {
+                "description": f"Automated Mobile QA Flow: {flow}",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": {
+                            "type": "text",
+                            "text": (
+                                f"You are executing mobile QA for flow: '{flow}'.\n"
+                                f"Expected outcome: '{outcome}'.\n\n"
+                                "Guidelines:\n"
+                                "1. Call `phone_observe` first to inspect the indexed screen DOM.\n"
+                                "2. Tap, type, or swipe using indexed elements [ID] and the current observation_generation.\n"
+                                "3. If unexpected permission dialogs appear, call `phone_dismiss_dialog`.\n"
+                                "4. Finally, call `phone_assert_state` to verify the expected outcome.\n"
+                                "5. Report the final efficiency metrics via `phone_efficiency_report`."
+                            ),
+                        },
+                    }
+                ],
+            }
+        elif name == "extract_screen_data":
+            schema = arguments.get("data_schema", "All key-value fields")
+            return {
+                "description": "Extract Structured Screen Data",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": {
+                            "type": "text",
+                            "text": (
+                                f"Extract structured data from the current mobile screen matching: '{schema}'.\n\n"
+                                "1. Call `phone_observe` with `filter_interactive_only=False` to inspect all text elements.\n"
+                                "2. Extract the values into a clean JSON object according to the schema.\n"
+                                "3. If data is scrolled out of view, use `phone_swipe` (direction='up') and observe again."
+                            ),
+                        },
+                    }
+                ],
+            }
+        elif name == "troubleshoot_screen":
+            return {
+                "description": "Troubleshoot Mobile Screen State",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": {
+                            "type": "text",
+                            "text": (
+                                "The mobile screen appears stuck, unresponsive, or in an unexpected state.\n\n"
+                                "1. Call `phone_health_check` to verify ADB/WDA backend status.\n"
+                                "2. Call `phone_observe` with `include_raw_image=True` to inspect visual state.\n"
+                                "3. Check if a system dialog or keyboard is obscuring the view.\n"
+                                "4. If an alert dialog is detected, call `phone_dismiss_dialog`.\n"
+                                "5. If the app has crashed, call `phone_open_app` to restart it."
+                            ),
+                        },
+                    }
+                ],
+            }
+        else:
+            raise PhoneHarnessError(f"Prompt not found: {name}")
+
     def run_stdio_server(self) -> None:
         """Standard JSON-RPC 2.0 stdio server loop for MCP."""
         while True:
@@ -807,8 +1038,12 @@ class PhoneHarnessMCPServer:
                     "id": msg_id,
                     "result": {
                         "protocolVersion": "2024-11-05",
-                        "serverInfo": {"name": "phone-harness-mcp", "version": "1.0.0"},
-                        "capabilities": {"tools": {}},
+                        "serverInfo": {"name": "phone-harness-mcp", "version": "1.1.0"},
+                        "capabilities": {
+                            "tools": {},
+                            "resources": {},
+                            "prompts": {},
+                        },
                     },
                 }
                 print(self._compact_json(response), flush=True)
@@ -835,6 +1070,57 @@ class PhoneHarnessMCPServer:
                 }
                 print(self._compact_json(response), flush=True)
 
+            elif method == "resources/list":
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "result": {"resources": self.get_resource_definitions()},
+                }
+                print(self._compact_json(response), flush=True)
+
+            elif method == "resources/read":
+                uri = params.get("uri", "")
+                try:
+                    res = self.handle_resource_read(uri)
+                    response = {
+                        "jsonrpc": "2.0",
+                        "id": msg_id,
+                        "result": res,
+                    }
+                except Exception as exc:
+                    response = {
+                        "jsonrpc": "2.0",
+                        "id": msg_id,
+                        "error": {"code": -32002, "message": str(exc)},
+                    }
+                print(self._compact_json(response), flush=True)
+
+            elif method == "prompts/list":
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "result": {"prompts": self.get_prompt_definitions()},
+                }
+                print(self._compact_json(response), flush=True)
+
+            elif method == "prompts/get":
+                prompt_name = params.get("name", "")
+                prompt_args = params.get("arguments", {})
+                try:
+                    res = self.handle_prompt_get(prompt_name, prompt_args)
+                    response = {
+                        "jsonrpc": "2.0",
+                        "id": msg_id,
+                        "result": res,
+                    }
+                except Exception as exc:
+                    response = {
+                        "jsonrpc": "2.0",
+                        "id": msg_id,
+                        "error": {"code": -32602, "message": str(exc)},
+                    }
+                print(self._compact_json(response), flush=True)
+
             elif method == "ping":
                 print(self._compact_json({"jsonrpc": "2.0", "id": msg_id, "result": {}}), flush=True)
 
@@ -859,3 +1145,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
