@@ -118,6 +118,16 @@ Call `phone_observe` before indexed actions. Pass its `observation_generation` w
 
 Text and coordinate selectors do not require a generation. Typed text is not echoed in MCP responses.
 
+### Remote MCP Server (SSE & HTTP)
+
+Run the harness as a remote HTTP/SSE server for cloud AI agents (Modal, Fly.io, AWS, LangChain) with Bearer token security:
+
+```bash
+phone-harness serve --transport sse --host 0.0.0.0 --port 8080 --auth-token YOUR_SECRET_TOKEN
+```
+
+Connect MCP clients to `http://<HOST>:8080/sse` with `Authorization: Bearer YOUR_SECRET_TOKEN`.
+
 ## CLI
 
 ```bash
@@ -128,7 +138,21 @@ phone-harness settings wifi
 phone-harness swipe up --distance medium
 phone-harness press HOME
 phone-harness wait --text Connected --timeout 5000
-phone-harness serve
+phone-harness screenshot screen.png --som
+phone-harness clipboard --set "My OTP"
+phone-harness report --optimal-steps 5
+
+# Remote MCP server (HTTP/SSE)
+phone-harness serve --transport sse --port 8080 --auth-token secret-token
+
+# Deterministic trace replay with layout self-healing
+phone-harness replay session.trace.jsonl --self-heal
+
+# Autonomous app crawler & QA auditor
+phone-harness crawl --package com.example.app --max-depth 5 --budget 25 --output-dir ./audit
+
+# Perceptual settle detection
+phone-harness settle --timeout 2.0
 ```
 
 ## Python API

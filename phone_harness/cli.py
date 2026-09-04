@@ -37,10 +37,26 @@ def cli():
 
 
 @cli.command()
-def serve():
-    """Starts the Model Context Protocol (MCP) JSON-RPC stdio server."""
+@click.option("--transport", type=click.Choice(["stdio", "sse"]), default="stdio", help="MCP transport mechanism")
+@click.option("--host", default="127.0.0.1", help="Host address for HTTP/SSE transport")
+@click.option("--port", default=8080, type=int, help="Port for HTTP/SSE transport")
+@click.option("--auth-token", default=None, help="Bearer token for HTTP/SSE authentication")
+def serve(transport: str, host: str, port: int, auth_token: str):
+    """Starts the Model Context Protocol (MCP) server over stdio or HTTP/SSE."""
     server = PhoneHarnessMCPServer()
-    server.run_stdio_server()
+    if transport == "sse":
+        from phone_harness.transport.sse_server import MCPSSEBridge
+        console.print(f"[bold green][*] Starting Phone Harness MCP SSE Bridge on http://{host}:{port}[/bold green]")
+        if auth_token:
+            console.print("[yellow][*] Bearer token authentication enabled.[/yellow]")
+        bridge = MCPSSEBridge(mcp_server=server, host=host, port=port, auth_token=auth_token)
+        try:
+            bridge.start(background=False)
+        except KeyboardInterrupt:
+            console.print("[yellow]Shutting down SSE bridge...[/yellow]")
+            bridge.stop()
+    else:
+        server.run_stdio_server()
 
 
 @cli.command()
@@ -258,6 +274,42 @@ def report_cmd(optimal_steps: int):
     harness = PhoneHarness()
     rep = harness.get_efficiency_report(optimal_steps=optimal_steps)
     console.print(Panel(json.dumps(rep, indent=2), title="Phone Harness Efficiency Report"))
+
+
+@cli.command("replay")
+@click.argument("trace_path")
+@click.option("--self-heal/--no-self-heal", default=True, help="Enable automatic self-healing re-grounding")
+def replay_cmd(trace_path: str, self_heal: bool):
+    """Replays an interaction session trace (.trace.jsonl)."""
+    harness = PhoneHarness()
+    summary = harness.replay_trace(trace_path, enable_self_healing=self_heal)
+    status_color = "green" if summary.is_success else "red"
+    console.print(f"[{status_color}]Trace Replay Finished: {summary.executed_steps}/{summary.total_steps} steps executed ({summary.healed_steps} healed)[/{status_color}]")
+
+
+@cli.command("crawl")
+@click.option("--package", default=None, help="Target app package to audit")
+@click.option("--max-depth", default=5, type=int, help="Maximum screen exploration depth")
+@click.option("--budget", default=20, type=int, help="Step budget for exploration")
+@click.option("--output-dir", default="./crawler_audit", help="Output directory for QA report")
+def crawl_cmd(package: str, max_depth: int, budget: int, output_dir: str):
+    """Autonomously explores an app state graph and outputs an executive QA audit report."""
+    harness = PhoneHarness()
+    report = harness.crawl_app(target_package=package, max_depth=max_depth, step_budget=budget, output_directory=output_dir)
+    console.print(f"[bold green][OK] Crawl finished: Discovered {report.screens_discovered} screens, {report.transitions_explored} transitions.[/bold green]")
+    console.print(f"[*] Executive QA Report saved to: [cyan]{report.report_markdown_path}[/cyan]")
+
+
+@cli.command("settle")
+@click.option("--timeout", default=2.0, type=float, help="Max seconds to wait for visual stabilization")
+def settle_cmd(timeout: float):
+    """Waits for screen animations to visually settle using perceptual differencing."""
+    harness = PhoneHarness()
+    is_settled = harness.wait_for_settle(max_wait_seconds=timeout)
+    if is_settled:
+        console.print("[bold green][OK] Screen settled visually.[/bold green]")
+    else:
+        console.print("[yellow][!] Settle timeout reached before motion ceased.[/yellow]")
 
 
 def main():

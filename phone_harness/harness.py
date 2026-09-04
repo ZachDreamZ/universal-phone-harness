@@ -42,6 +42,7 @@ class PhoneHarness:
         self.step_guard = StepBudgetGuard(max_step_budget=config.max_step_budget)
         self.last_state: Optional[PhoneState] = None
         self._observation_generation: int = 0
+        self.tracer: Optional[Any] = None
 
     @property
     def device(self) -> BasePhoneDevice:
@@ -275,7 +276,7 @@ class PhoneHarness:
 
         target_info = f"[{target_elem.id}] {target_elem.text or target_elem.type}" if target_elem else f"({target_x}, {target_y})" if target_x else req.action.value
 
-        return ActionResult(
+        res = ActionResult(
             success=True,
             action=req.action.value,
             target_info=target_info,
@@ -283,6 +284,14 @@ class PhoneHarness:
             verification_passed=verification_passed,
             new_state=new_state,
         )
+
+        if self.tracer is not None and getattr(self.tracer, "is_recording", False):
+            try:
+                self.tracer.record_step(req, res, current_state, new_state)
+            except Exception:
+                pass
+
+        return res
 
     def _resolve_action_target(
         self,
@@ -504,4 +513,51 @@ class PhoneHarness:
 
         raw_frame.convert("RGB").save(output_path)
         return raw_frame.size
+
+    def wait_for_settle(
+        self,
+        max_wait_seconds: float = 2.0,
+        poll_interval_seconds: float = 0.1,
+        settle_threshold: float = 0.01,
+    ) -> bool:
+        """Waits for screen animations to visually stabilize using perceptual frame differencing."""
+        from phone_harness.perception.settle import PerceptualSettleDetector
+        is_settled, _, _, _ = PerceptualSettleDetector.wait_for_settle(
+            self.device,
+            max_wait_seconds=max_wait_seconds,
+            poll_interval_seconds=poll_interval_seconds,
+            settle_threshold=settle_threshold,
+        )
+        return is_settled
+
+    def start_recording(self, output_path: str) -> None:
+        """Starts recording user or agent interaction steps to a .trace.jsonl file."""
+        from phone_harness.recording.tracer import SessionTracer
+        self.tracer = SessionTracer(output_path)
+
+    def stop_recording(self) -> Optional[str]:
+        """Finalizes active recording and closes the trace file."""
+        if self.tracer is not None:
+            path = self.tracer.stop_recording()
+            self.tracer = None
+            return path
+        return None
+
+    def replay_trace(self, trace_path: str, enable_self_healing: bool = True):
+        """Replays an interaction trace with automatic self-healing re-grounding."""
+        from phone_harness.recording.tracer import TraceReplayer
+        return TraceReplayer.replay_trace(self, trace_path, enable_self_healing=enable_self_healing)
+
+    def crawl_app(
+        self,
+        target_package: Optional[str] = None,
+        max_depth: int = 5,
+        step_budget: int = 20,
+        output_directory: str = "./crawler_audit",
+    ):
+        """Autonomously explores application screen states and produces an executive QA audit report."""
+        from phone_harness.crawler.crawler import AppCrawler
+        crawler = AppCrawler(self, output_directory=output_directory)
+        return crawler.crawl(target_package=target_package, max_depth=max_depth, step_budget=step_budget)
+
 
