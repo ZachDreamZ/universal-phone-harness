@@ -87,6 +87,26 @@ After installation, register this stdio server in any MCP client:
 }
 ```
 
+### AI Agent Quick-Install Prompt
+
+To install and wire this harness into any AI agent (Claude Code, Antigravity, Cursor, Windsurf, OpenCode, Cline), copy and paste this prompt:
+
+> "Configure and install `universal-phone-harness` as an MCP server:
+> 1. Clone `https://github.com/ZachDreamZ/universal-phone-harness.git` and install editable with `pip install -e .`.
+> 2. Register the MCP server in my agent's MCP configuration (e.g., `claude_desktop_config.json`, `.gemini/antigravity-cli/settings.json`, or `.cursor/mcp.json`):
+>    ```json
+>    {
+>      \"mcpServers\": {
+>        \"phone-harness\": {
+>          \"command\": \"python\",
+>          \"args\": [\"-m\", \"phone_harness.mcp_server\"]
+>        }
+>      }
+>    }
+>    ```
+>    *(Note: Add `\"--device-type\", \"mock\"` to args for deterministic offline testing without physical hardware).*
+> 3. Verify server connectivity via the `phone://device/status` resource or by running `phone-harness doctor`."
+
 Call `phone_observe` before indexed actions. Pass its `observation_generation` with the index:
 
 ```json
