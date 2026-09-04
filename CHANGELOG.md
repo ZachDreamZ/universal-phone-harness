@@ -4,6 +4,24 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-04
+
+### Added
+
+- **Remote MCP HTTP/SSE Transport**: Added `MCPSSEBridge` with `--transport sse` and Bearer token authentication for cloud agents
+- **Deterministic Session Recording & Self-Healing Trace Replayer**: Added `SessionTracer` and `TraceReplayer` with layout-shift recovery
+- **Autonomous App Explorer & QA Auditor**: Added `AppCrawler` for automated state graph traversal, crash/ANR detection, and QA audit reporting
+- **Perceptual Settle Detection**: Added `PerceptualSettleDetector` for motion stabilization without arbitrary sleeps
+- **5 New MCP Tools**: `phone_wait_for_settle`, `phone_start_recording`, `phone_stop_recording`, `phone_replay_trace`, `phone_crawl_app`
+- **New MCP Resource**: `phone://recording/status` for active recording telemetry
+- **New CLI Commands**: `phone-harness serve --transport sse`, `phone-harness replay`, `phone-harness crawl`, and `phone-harness settle`
+- **Expanded Test Suite**: 18 new unit and integration tests bringing test count to 132 passing tests
+
+### Changed
+
+- Refactored `PhoneHarnessMCPServer` with shared `handle_jsonrpc_message` dispatcher
+- Bumped version to `1.2.0`
+
 ## [1.1.0] - 2026-09-04
 
 ### Added
@@ -45,6 +63,7 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Typed text and post-type DOMs are not echoed in MCP responses
 - Client-facing and diagnostic errors avoid clipboard and secret values
 
-[Unreleased]: https://github.com/ZachDreamZ/universal-phone-harness/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/ZachDreamZ/universal-phone-harness/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/ZachDreamZ/universal-phone-harness/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/ZachDreamZ/universal-phone-harness/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/ZachDreamZ/universal-phone-harness/releases/tag/v1.0.0

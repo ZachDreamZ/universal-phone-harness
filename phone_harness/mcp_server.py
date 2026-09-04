@@ -346,6 +346,58 @@ class PhoneHarnessMCPServer:
                 "description": "Returns connection status, hardware metadata, and diagnostic metrics.",
                 "inputSchema": {"type": "object", "properties": {}},
             },
+            {
+                "name": "phone_wait_for_settle",
+                "description": "Waits until screen animations visually stabilize using perceptual frame differencing.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "max_wait_seconds": {"type": "number", "default": 2.0, "description": "Maximum seconds to wait for stabilization."},
+                        "settle_threshold": {"type": "number", "default": 0.01, "description": "Normalized perceptual delta threshold."},
+                    },
+                },
+            },
+            {
+                "name": "phone_start_recording",
+                "description": "Starts recording interaction steps to a .trace.jsonl session file.",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["output_path"],
+                    "properties": {
+                        "output_path": {"type": "string", "description": "Target path for the .trace.jsonl output."},
+                    },
+                },
+            },
+            {
+                "name": "phone_stop_recording",
+                "description": "Stops active session recording and closes the trace file.",
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "phone_replay_trace",
+                "description": "Replays an interaction session trace with automatic self-healing re-grounding.",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["trace_path"],
+                    "properties": {
+                        "trace_path": {"type": "string", "description": "Path to the .trace.jsonl file to replay."},
+                        "enable_self_healing": {"type": "boolean", "default": True, "description": "Enable self-healing re-grounding when element IDs shift."},
+                    },
+                },
+            },
+            {
+                "name": "phone_crawl_app",
+                "description": "Autonomously explores an application state graph and generates a QA audit report.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "target_package": {"type": "string", "description": "Target app package to audit."},
+                        "max_depth": {"type": "integer", "default": 5, "description": "Maximum exploration depth."},
+                        "step_budget": {"type": "integer", "default": 20, "description": "Step budget for exploration."},
+                        "output_directory": {"type": "string", "default": "./crawler_audit", "description": "Output directory for report and screenshots."},
+                    },
+                },
+            },
         ]
 
     def _compact_json(self, payload: Any, **_ignored_options: Any) -> str:
@@ -380,8 +432,9 @@ class PhoneHarnessMCPServer:
             "content": [{"type": "text", "text": self._compact_json(payload, indent=2)}],
         }
 
-    def handle_tool_call(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_tool_call(self, name: str, args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Dispatches an incoming MCP tool call to the PhoneHarness."""
+        args = args or {}
         try:
             if name == "phone_observe":
                 state = self.harness.observe(
@@ -810,6 +863,78 @@ class PhoneHarnessMCPServer:
                     ]
                 }
 
+            elif name == "phone_wait_for_settle":
+                is_settled = self.harness.wait_for_settle(
+                    max_wait_seconds=args.get("max_wait_seconds", 2.0),
+                    settle_threshold=args.get("settle_threshold", 0.01),
+                )
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": self._compact_json({"status": "success", "is_settled": is_settled}),
+                        }
+                    ]
+                }
+
+            elif name == "phone_start_recording":
+                self.harness.start_recording(args["output_path"])
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": self._compact_json({
+                                "status": "recording_started",
+                                "output_path": args["output_path"],
+                            }),
+                        }
+                    ]
+                }
+
+            elif name == "phone_stop_recording":
+                saved_path = self.harness.stop_recording()
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": self._compact_json({
+                                "status": "recording_stopped",
+                                "output_path": saved_path,
+                            }),
+                        }
+                    ]
+                }
+
+            elif name == "phone_replay_trace":
+                replay_res = self.harness.replay_trace(
+                    args["trace_path"],
+                    enable_self_healing=args.get("enable_self_healing", True),
+                )
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": self._compact_json(replay_res.model_dump(), indent=2),
+                        }
+                    ]
+                }
+
+            elif name == "phone_crawl_app":
+                crawl_res = self.harness.crawl_app(
+                    target_package=args.get("target_package"),
+                    max_depth=args.get("max_depth", 5),
+                    step_budget=args.get("step_budget", 20),
+                    output_directory=args.get("output_directory", "./crawler_audit"),
+                )
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": self._compact_json(crawl_res.model_dump(), indent=2),
+                        }
+                    ]
+                }
+
             else:
                 return {
                     "isError": True,
@@ -868,6 +993,12 @@ class PhoneHarnessMCPServer:
                 "description": "Aggregated execution telemetry, step budget utilization, and latency metrics.",
                 "mimeType": "application/json",
             },
+            {
+                "uri": "phone://recording/status",
+                "name": "Session Recording Status",
+                "description": "Active session recording telemetry and step count.",
+                "mimeType": "application/json",
+            },
         ]
 
     def handle_resource_read(self, uri: str) -> Dict[str, Any]:
@@ -902,6 +1033,22 @@ class PhoneHarnessMCPServer:
                         "uri": uri,
                         "mimeType": "application/json",
                         "text": self._compact_json(report, indent=2),
+                    }
+                ]
+            }
+        elif uri == "phone://recording/status":
+            tracer = getattr(self.harness, "tracer", None)
+            rec_status = {
+                "is_recording": tracer.is_recording if tracer else False,
+                "output_path": tracer.output_path if tracer else None,
+                "step_counter": tracer.step_counter if tracer else 0,
+            }
+            return {
+                "contents": [
+                    {
+                        "uri": uri,
+                        "mimeType": "application/json",
+                        "text": self._compact_json(rec_status, indent=2),
                     }
                 ]
             }
@@ -1028,114 +1175,123 @@ class PhoneHarnessMCPServer:
             except Exception:
                 continue
 
-            msg_id = msg.get("id")
-            method = msg.get("method")
-            params = msg.get("params", {})
+    def handle_jsonrpc_message(self, msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Processes a single JSON-RPC 2.0 message and returns the response dictionary."""
+        msg_id = msg.get("id")
+        method = msg.get("method")
+        params = msg.get("params", {})
 
-            if method == "initialize":
-                response = {
-                    "jsonrpc": "2.0",
-                    "id": msg_id,
-                    "result": {
-                        "protocolVersion": "2024-11-05",
-                        "serverInfo": {"name": "phone-harness-mcp", "version": "1.1.0"},
-                        "capabilities": {
-                            "tools": {},
-                            "resources": {},
-                            "prompts": {},
-                        },
+        if method == "initialize":
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "serverInfo": {"name": "phone-harness-mcp", "version": "1.2.0"},
+                    "capabilities": {
+                        "tools": {},
+                        "resources": {},
+                        "prompts": {},
                     },
-                }
-                print(self._compact_json(response), flush=True)
+                },
+            }
 
-            elif method == "notifications/initialized":
-                pass
+        elif method == "notifications/initialized":
+            return None
 
-            elif method == "tools/list":
-                response = {
+        elif method == "tools/list":
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {"tools": self.get_tool_definitions()},
+            }
+
+        elif method == "tools/call":
+            tool_name = params.get("name")
+            tool_args = params.get("arguments", {})
+            tool_res = self.handle_tool_call(tool_name, tool_args)
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": tool_res,
+            }
+
+        elif method == "resources/list":
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {"resources": self.get_resource_definitions()},
+            }
+
+        elif method == "resources/read":
+            uri = params.get("uri", "")
+            try:
+                res = self.handle_resource_read(uri)
+                return {
                     "jsonrpc": "2.0",
                     "id": msg_id,
-                    "result": {"tools": self.get_tool_definitions()},
+                    "result": res,
                 }
-                print(self._compact_json(response), flush=True)
-
-            elif method == "tools/call":
-                tool_name = params.get("name")
-                tool_args = params.get("arguments", {})
-                tool_res = self.handle_tool_call(tool_name, tool_args)
-                response = {
+            except Exception as exc:
+                return {
                     "jsonrpc": "2.0",
                     "id": msg_id,
-                    "result": tool_res,
+                    "error": {"code": -32002, "message": str(exc)},
                 }
-                print(self._compact_json(response), flush=True)
 
-            elif method == "resources/list":
-                response = {
+        elif method == "prompts/list":
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {"prompts": self.get_prompt_definitions()},
+            }
+
+        elif method == "prompts/get":
+            prompt_name = params.get("name", "")
+            prompt_args = params.get("arguments", {})
+            try:
+                res = self.handle_prompt_get(prompt_name, prompt_args)
+                return {
                     "jsonrpc": "2.0",
                     "id": msg_id,
-                    "result": {"resources": self.get_resource_definitions()},
+                    "result": res,
                 }
-                print(self._compact_json(response), flush=True)
-
-            elif method == "resources/read":
-                uri = params.get("uri", "")
-                try:
-                    res = self.handle_resource_read(uri)
-                    response = {
-                        "jsonrpc": "2.0",
-                        "id": msg_id,
-                        "result": res,
-                    }
-                except Exception as exc:
-                    response = {
-                        "jsonrpc": "2.0",
-                        "id": msg_id,
-                        "error": {"code": -32002, "message": str(exc)},
-                    }
-                print(self._compact_json(response), flush=True)
-
-            elif method == "prompts/list":
-                response = {
+            except Exception as exc:
+                return {
                     "jsonrpc": "2.0",
                     "id": msg_id,
-                    "result": {"prompts": self.get_prompt_definitions()},
+                    "error": {"code": -32602, "message": str(exc)},
                 }
+
+        elif method == "ping":
+            return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
+
+        else:
+            if msg_id is not None:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "error": {"code": -32601, "message": f"Method not found: {method}"},
+                }
+            return None
+
+    def run_stdio_server(self):
+        """Runs the MCP server over standard input/output."""
+        for line in sys.stdin:
+            if not line:
+                break
+            line = line.strip()
+            if not line:
+                continue
+
+            try:
+                msg = json.loads(line)
+            except Exception:
+                continue
+
+            response = self.handle_jsonrpc_message(msg)
+            if response is not None:
                 print(self._compact_json(response), flush=True)
-
-            elif method == "prompts/get":
-                prompt_name = params.get("name", "")
-                prompt_args = params.get("arguments", {})
-                try:
-                    res = self.handle_prompt_get(prompt_name, prompt_args)
-                    response = {
-                        "jsonrpc": "2.0",
-                        "id": msg_id,
-                        "result": res,
-                    }
-                except Exception as exc:
-                    response = {
-                        "jsonrpc": "2.0",
-                        "id": msg_id,
-                        "error": {"code": -32602, "message": str(exc)},
-                    }
-                print(self._compact_json(response), flush=True)
-
-            elif method == "ping":
-                print(self._compact_json({"jsonrpc": "2.0", "id": msg_id, "result": {}}), flush=True)
-
-            else:
-                if msg_id is not None:
-                    print(
-                        self._compact_json(
-                            {
-                                "jsonrpc": "2.0",
-                                "id": msg_id,
-                                "error": {"code": -32601, "message": f"Method not found: {method}"},
-                            }
-                        ),
-                        flush=True,
-                    )
 
 
 def main():
