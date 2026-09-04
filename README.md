@@ -14,7 +14,7 @@ Android uses ADB and UIAutomator. The iOS backend uses WebDriverAgent. A determi
 
 ## Features
 
-- 16 MCP tools for observation, taps, typing, gestures, navigation, waits, assertions, dialogs, clipboard access, and health checks
+- 18 MCP tools, native MCP Resources, and MCP Prompts for observation, taps, typing, gestures, navigation, waits, assertions, dialogs, clipboard access, screenshot saving, and health checks
 - Indexed UI elements with stale-observation rejection
 - Accessibility-first grounding with local OCR fallback for canvas and WebView surfaces
 - Explicit post-action assertions and one re-grounded retry
@@ -168,11 +168,33 @@ mock_config = HarnessConfig(default_platform="mock")
 | `phone_open_url` | Open a validated HTTP or HTTPS URL |
 | `phone_open_settings` | Open a system Settings section |
 | `phone_set_clipboard` | Set and verify clipboard content |
+| `phone_get_clipboard` | Read text from device system clipboard |
+| `phone_save_screenshot` | Capture and save raw or Set-of-Marks screenshot to disk |
 | `phone_dismiss_dialog` | Respond to detected dialogs; defaults to deny |
 | `phone_long_press` | Long-press a target |
 | `phone_double_tap` | Double-tap a target |
 | `phone_efficiency_report` | Return step and latency metrics |
 | `phone_health_check` | Return backend and device health |
+
+## MCP Resources
+
+Expose real-time device state as native MCP resources without consuming action step budgets:
+
+| Resource URI | Description | MIME Type |
+|---|---|---|
+| `phone://device/status` | Real-time device metadata, connection, active app package, and OS info | `application/json` |
+| `phone://screen/dom` | Live token-compacted indexed DOM of the active phone screen | `text/plain` |
+| `phone://diagnostics/efficiency` | Step budget utilization, latency profile, and token economy report | `application/json` |
+
+## MCP Prompts
+
+Built-in agent workflows accessible via MCP prompt templates:
+
+| Prompt | Arguments | Purpose |
+|---|---|---|
+| `mobile_flow_qa` | `target_flow`, `expected_outcome` | Guided end-to-end user flow QA automation with assertion gates |
+| `extract_screen_data` | `data_schema` | Structured JSON screen data extraction workflow |
+| `troubleshoot_screen` | _none_ | Diagnostic runbook for stuck screens, permission dialogs, or app crashes |
 
 ## Architecture
 
