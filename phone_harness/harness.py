@@ -3,6 +3,7 @@ Universal Phone Harness Controller.
 Orchestrates perception, actuation, zero-mistake verification, and safety across Android, iOS, and Mock devices.
 """
 
+import os
 import time
 from typing import Optional, List, Dict, Any, Tuple
 from PIL import Image
@@ -482,6 +483,9 @@ class PhoneHarness:
         include_som: bool = False,
     ) -> Tuple[int, int]:
         """Captures and saves a phone screenshot directly to a local file. Returns (width, height)."""
+        parent_dir = os.path.dirname(os.path.abspath(output_path))
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         raw_frame = self.device.capture_frame()
         if include_som:
             raw_elements = self.device.dump_hierarchy()

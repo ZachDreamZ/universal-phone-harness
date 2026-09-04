@@ -68,14 +68,15 @@ def test_mcp_save_screenshot():
         assert os.path.exists(raw_path)
         assert os.path.getsize(raw_path) > 0
 
-        # Save SoM screenshot
-        res_som = server.handle_tool_call("phone_save_screenshot", {"output_path": som_path, "include_som": True})
+        # Save SoM screenshot in a nested, non-existent directory
+        nested_som_path = os.path.join(tmpdir, "nested", "sub", "som_screen.png")
+        res_som = server.handle_tool_call("phone_save_screenshot", {"output_path": nested_som_path, "include_som": True})
         assert "isError" not in res_som
         data_som = json.loads(res_som["content"][0]["text"])
         assert data_som["status"] == "success"
         assert data_som["som_annotated"] is True
-        assert os.path.exists(som_path)
-        assert os.path.getsize(som_path) > 0
+        assert os.path.exists(nested_som_path)
+        assert os.path.getsize(nested_som_path) > 0
 
 
 def test_mcp_resources_list_and_read():
