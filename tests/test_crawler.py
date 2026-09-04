@@ -63,3 +63,16 @@ def test_crawler_safety_exclusion():
         # Confirm Factory Reset was never targeted
         for trans in report.transitions:
             assert trans.target_text != "Factory Reset Phone"
+
+
+def test_crawler_backtracking():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        device = MockPhoneDevice()
+        harness = PhoneHarness(device=device)
+
+        crawler = AppCrawler(harness=harness, output_directory=tmpdir)
+        # Crawl with max_depth=1 so it explores an item and triggers backtracks
+        report = crawler.crawl(step_budget=5, max_depth=1)
+
+        assert report.dead_ends >= 1
+        assert report.screens_discovered >= 2

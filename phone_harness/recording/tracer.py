@@ -10,7 +10,7 @@ import time
 from typing import Optional, Dict, Any, List, Tuple
 from pydantic import BaseModel, Field
 
-from phone_harness.core.models import ActionRequest, ActionResult, ActionType, PhoneState, UIElement
+from phone_harness.core.models import ActionRequest, ActionResult, ActionType, KeyCode, SwipeDirection, PhoneState, UIElement
 from phone_harness.core.exceptions import PhoneHarnessError
 
 
@@ -61,6 +61,9 @@ class SessionTracer:
 
     def start_recording(self, output_path: str) -> None:
         """Starts recording session steps to the specified path."""
+        if self._file_handle is not None:
+            self.stop_recording()
+
         parent_dir = os.path.dirname(os.path.abspath(output_path))
         if parent_dir:
             os.makedirs(parent_dir, exist_ok=True)
@@ -111,11 +114,28 @@ class SessionTracer:
             action_params["text_to_type"] = request.text_to_type
         if getattr(request, "direction", None) is not None:
             action_params["direction"] = request.direction.value if hasattr(request.direction, "value") else str(request.direction)
-        if getattr(request, "key_code", None) is not None:
-            action_params["key_code"] = request.key_code.value if hasattr(request.key_code, "value") else str(request.key_code)
+        if getattr(request, "swipe_distance", None) is not None:
+            action_params["swipe_distance"] = request.swipe_distance
+        if getattr(request, "key", None) is not None:
+            action_params["key"] = request.key.value if hasattr(request.key, "value") else str(request.key)
+        elif getattr(request, "key_code", None) is not None:
+            action_params["key"] = request.key_code.value if hasattr(request.key_code, "value") else str(request.key_code)
+        if getattr(request, "package_name", None) is not None:
+            action_params["package_name"] = request.package_name
+        if getattr(request, "duration_ms", None) is not None:
+            action_params["duration_ms"] = request.duration_ms
+        if getattr(request, "press_enter", None) is not None:
+            action_params["press_enter"] = request.press_enter
+        if getattr(request, "clear_existing", None) is not None:
+            action_params["clear_existing"] = request.clear_existing
         if getattr(request, "x", None) is not None and getattr(request, "y", None) is not None:
             action_params["x"] = request.x
             action_params["y"] = request.y
+        if getattr(request, "start_x", None) is not None:
+            action_params["start_x"] = request.start_x
+            action_params["start_y"] = request.start_y
+            action_params["end_x"] = request.end_x
+            action_params["end_y"] = request.end_y
 
         step = TraceStep(
             step_number=self.step_counter,
@@ -290,6 +310,8 @@ class TraceReplayer:
 
             # Build and execute ActionRequest
             action_type = ActionType(step.action_type)
+            key_val = step.action_params.get("key") or step.action_params.get("key_code")
+            direction_val = step.action_params.get("direction")
             action_req = ActionRequest(
                 action=action_type,
                 target_index=target_index,
@@ -298,6 +320,17 @@ class TraceReplayer:
                 text_to_type=step.action_params.get("text_to_type"),
                 x=step.action_params.get("x"),
                 y=step.action_params.get("y"),
+                key=KeyCode(key_val) if key_val else None,
+                direction=SwipeDirection(direction_val) if direction_val else None,
+                swipe_distance=step.action_params.get("swipe_distance", "medium"),
+                start_x=step.action_params.get("start_x"),
+                start_y=step.action_params.get("start_y"),
+                end_x=step.action_params.get("end_x"),
+                end_y=step.action_params.get("end_y"),
+                package_name=step.action_params.get("package_name"),
+                duration_ms=step.action_params.get("duration_ms", 250),
+                press_enter=step.action_params.get("press_enter", False),
+                clear_existing=step.action_params.get("clear_existing", True),
             )
 
             try:

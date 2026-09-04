@@ -432,8 +432,9 @@ class PhoneHarnessMCPServer:
             "content": [{"type": "text", "text": self._compact_json(payload, indent=2)}],
         }
 
-    def handle_tool_call(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_tool_call(self, name: str, args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Dispatches an incoming MCP tool call to the PhoneHarness."""
+        args = args or {}
         try:
             if name == "phone_observe":
                 state = self.harness.observe(

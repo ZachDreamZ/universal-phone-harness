@@ -20,10 +20,10 @@ class PerceptualSettleDetector:
         Calculates normalized perceptual difference between two frames.
         Returns a float between 0.0 (identical) and 1.0 (completely distinct).
         """
-        if image_a.size != image_b.size:
-            image_b = image_b.resize(image_a.size)
+        if image_a is None or image_b is None:
+            return 1.0
 
-        # Downsample to a standardized low-resolution grayscale thumbnail for fast perceptual diffing
+        # Downsample directly to a standardized low-resolution grayscale thumbnail for fast perceptual diffing
         thumbnail_size = (64, 64)
         gray_a = image_a.convert("L").resize(thumbnail_size, Image.Resampling.BILINEAR)
         gray_b = image_b.convert("L").resize(thumbnail_size, Image.Resampling.BILINEAR)
@@ -42,6 +42,7 @@ class PerceptualSettleDetector:
         max_wait_seconds: float = 2.0,
         poll_interval_seconds: float = 0.1,
         settle_threshold: float = 0.01,
+        consecutive_stable_frames: int = 1,
     ) -> Tuple[bool, Image.Image, int, float]:
         """
         Polls frames until the screen visually stabilizes or timeout is reached.
@@ -53,6 +54,7 @@ class PerceptualSettleDetector:
         previous_frame = device.capture_frame()
         frames_checked = 1
         latest_difference = 1.0
+        stable_count = 0
 
         time.sleep(poll_interval_seconds)
 
@@ -62,7 +64,11 @@ class PerceptualSettleDetector:
             latest_difference = cls.calculate_frame_difference(previous_frame, current_frame)
 
             if latest_difference <= settle_threshold:
-                return True, current_frame, frames_checked, latest_difference
+                stable_count += 1
+                if stable_count >= consecutive_stable_frames:
+                    return True, current_frame, frames_checked, latest_difference
+            else:
+                stable_count = 0
 
             previous_frame = current_frame
             time.sleep(poll_interval_seconds)

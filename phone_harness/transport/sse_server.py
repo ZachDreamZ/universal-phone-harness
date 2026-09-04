@@ -8,8 +8,9 @@ import json
 import uuid
 import queue
 import threading
+import hmac
 from urllib.parse import urlparse, parse_qs
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from typing import Optional, Dict, Any, List
 
 from phone_harness.mcp_server import PhoneHarnessMCPServer
@@ -23,7 +24,7 @@ class MCPSSEHandler(BaseHTTPRequestHandler):
         pass
 
     def _is_authenticated(self) -> bool:
-        """Validates Bearer token in Authorization header or query parameter."""
+        """Validates Bearer token in Authorization header or query parameter using constant-time check."""
         expected_token = getattr(self.server, "auth_token", None)
         if not expected_token:
             return True
@@ -32,14 +33,14 @@ class MCPSSEHandler(BaseHTTPRequestHandler):
         auth_header = self.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[len("Bearer "):].strip()
-            if token == expected_token:
+            if hmac.compare_digest(token, expected_token):
                 return True
 
         # Check query parameter ?token=<TOKEN>
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
         token_param = query.get("token", [None])[0]
-        if token_param == expected_token:
+        if token_param and hmac.compare_digest(token_param, expected_token):
             return True
 
         return False
@@ -48,8 +49,18 @@ class MCPSSEHandler(BaseHTTPRequestHandler):
         """Sends HTTP 401 Unauthorized response."""
         self.send_response(401)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(b'{"error": "Unauthorized", "message": "Valid bearer token required."}')
+
+    def do_OPTIONS(self) -> None:
+        """Handles CORS preflight requests."""
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.end_headers()
 
     def do_GET(self) -> None:
         """Handles health checks and Server-Sent Events stream initialization."""
@@ -58,14 +69,18 @@ class MCPSSEHandler(BaseHTTPRequestHandler):
         if parsed.path == "/health":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            summary = self.server.mcp_server.harness.device.get_device_summary()
-            payload = {
-                "status": "healthy",
-                "device_id": summary.device_id,
-                "platform": summary.platform,
-                "model": summary.model,
-            }
+            if self._is_authenticated():
+                summary = self.server.mcp_server.harness.device.get_device_summary()
+                payload = {
+                    "status": "healthy",
+                    "device_id": summary.device_id,
+                    "platform": summary.platform,
+                    "model": summary.model,
+                }
+            else:
+                payload = {"status": "healthy"}
             self.wfile.write(json.dumps(payload).encode("utf-8"))
             return
 
@@ -83,10 +98,14 @@ class MCPSSEHandler(BaseHTTPRequestHandler):
 
             session_id = str(uuid.uuid4())
             msg_queue = queue.Queue()
-            self.server.active_clients[session_id] = msg_queue
+            with self.server.clients_lock:
+                self.server.active_clients[session_id] = msg_queue
 
             # Send initial endpoint event per official MCP SSE specification
-            init_event = f"event: endpoint\ndata: /message?sessionId={session_id}\n\n"
+            init_path = f"/message?sessionId={session_id}"
+            if getattr(self.server, "auth_token", None):
+                init_path += f"&token={self.server.auth_token}"
+            init_event = f"event: endpoint\ndata: {init_path}\n\n"
             self.wfile.write(init_event.encode("utf-8"))
             self.wfile.flush()
 
@@ -104,7 +123,8 @@ class MCPSSEHandler(BaseHTTPRequestHandler):
             except (ConnectionResetError, BrokenPipeError):
                 pass
             finally:
-                self.server.active_clients.pop(session_id, None)
+                with self.server.clients_lock:
+                    self.server.active_clients.pop(session_id, None)
             return
 
         self.send_response(404)
@@ -127,8 +147,14 @@ class MCPSSEHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
-                self.wfile.write(json.dumps({"error": "Invalid JSON", "details": str(exc)}).encode("utf-8"))
+                jsonrpc_err = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": f"Parse error: {str(exc)}"},
+                }
+                self.wfile.write(json.dumps(jsonrpc_err).encode("utf-8"))
                 return
 
             response = self.server.mcp_server.handle_jsonrpc_message(msg)
@@ -145,8 +171,11 @@ class MCPSSEHandler(BaseHTTPRequestHandler):
                 # Broadcast to SSE clients if sessionId present
                 query = parse_qs(parsed.query)
                 session_id = query.get("sessionId", [None])[0]
-                if session_id and session_id in self.server.active_clients:
-                    self.server.active_clients[session_id].put(encoded_resp)
+                if session_id:
+                    with self.server.clients_lock:
+                        target_queue = self.server.active_clients.get(session_id)
+                    if target_queue is not None:
+                        target_queue.put(encoded_resp)
             return
 
         self.send_response(404)
@@ -167,7 +196,7 @@ class MCPSSEBridge:
         self.host = host
         self.port = port
         self.auth_token = auth_token
-        self.http_server: Optional[HTTPServer] = None
+        self.http_server: Optional[ThreadingHTTPServer] = None
         self.server_thread: Optional[threading.Thread] = None
 
     @property
@@ -177,10 +206,11 @@ class MCPSSEBridge:
 
     def start(self, background: bool = True) -> None:
         """Starts the HTTP and SSE server."""
-        self.http_server = HTTPServer((self.host, self.port), MCPSSEHandler)
+        self.http_server = ThreadingHTTPServer((self.host, self.port), MCPSSEHandler)
         self.http_server.mcp_server = self.mcp_server
         self.http_server.auth_token = self.auth_token
         self.http_server.active_clients = {}
+        self.http_server.clients_lock = threading.Lock()
         self.http_server.is_running = True
 
         if background:

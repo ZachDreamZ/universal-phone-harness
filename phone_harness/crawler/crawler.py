@@ -58,6 +58,14 @@ class AppCrawler:
         "fatal exception",
     ]
 
+    DESTRUCTIVE_KEYWORDS = {
+        "factory reset",
+        "erase all",
+        "format phone",
+        "wipe data",
+        "delete account",
+    }
+
     def __init__(self, harness: Any, output_directory: str = "./crawler_audit"):
         self.harness = harness
         self.output_directory = output_directory
@@ -69,6 +77,11 @@ class AppCrawler:
         self.explored_actions: Set[Tuple[str, str]] = set()  # (state_hash, element_signature)
         self.crashes_detected: int = 0
         self.dead_ends: int = 0
+
+    def _is_destructive(self, element: UIElement) -> bool:
+        """Identifies potentially dangerous system/destructive buttons to avoid during crawl."""
+        text_corpus = f"{element.text or ''} {element.description or ''} {element.resource_id or ''}".lower()
+        return any(keyword in text_corpus for keyword in self.DESTRUCTIVE_KEYWORDS)
 
     def _is_crash_state(self, state: PhoneState) -> bool:
         """Determines if the current screen represents an application crash or ANR dialog."""
@@ -91,7 +104,7 @@ class AppCrawler:
             try:
                 self.harness.save_screenshot(screen_file, include_som=True)
             except Exception:
-                pass
+                return ""
         return screen_file
 
     def crawl(
@@ -101,21 +114,25 @@ class AppCrawler:
         step_budget: int = 20,
     ) -> CrawlReport:
         """
-        Executes an autonomous state-graph exploration loop.
+        Autonomously traverses the application screen graph within depth and budget constraints.
         """
         start_time = time.monotonic()
 
-        # Initial observation
-        initial_state = self.harness.observe()
-        pkg = target_package or initial_state.current_app_package
+        # Launch target package if specified
+        if target_package:
+            self.harness.execute_action(
+                ActionRequest(action=ActionType.OPEN_APP, package_name=target_package)
+            )
 
         current_depth = 0
+        initial_state = self.harness.observe()
+        pkg = target_package or initial_state.current_app_package or "unknown"
 
         for step in range(step_budget):
-            state = self.harness.observe()
+            state = initial_state if step == 0 else self.harness.observe()
             state_hash = state.perceptual_hash or ZeroMistakeVerifier.calculate_tree_hash(state.elements)
-
             is_crash = self._is_crash_state(state)
+
             if is_crash:
                 self.crashes_detected += 1
 
@@ -134,7 +151,7 @@ class AppCrawler:
             # Select an unvisited interactive element to explore
             candidates = [
                 el for el in state.elements
-                if (el.is_clickable or el.is_focusable) and (el.text != "Factory Reset Phone")  # safety exclusion
+                if (el.is_clickable or el.is_focusable) and not self._is_destructive(el)
             ]
 
             next_element: Optional[UIElement] = None
@@ -175,7 +192,7 @@ class AppCrawler:
                 self.dead_ends += 1
                 back_req = ActionRequest(
                     action=ActionType.PRESS_KEY,
-                    key_code=KeyCode.BACK,
+                    key=KeyCode.BACK,
                     observation_generation=state.generation,
                 )
                 try:

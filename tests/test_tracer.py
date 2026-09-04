@@ -112,3 +112,60 @@ def test_trace_replay_self_healing():
         assert summary.total_steps == 1
         assert summary.executed_steps == 1
         assert summary.healed_steps == 1
+
+
+def test_trace_replay_keys_and_swipes():
+    """Verifies that non-indexed actions (press_key, swipe, open_app) record and replay correctly."""
+    from phone_harness.core.models import KeyCode, SwipeDirection
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        trace_path = os.path.join(tmpdir, "keys_swipes.trace.jsonl")
+        tracer = SessionTracer(trace_path)
+
+        device = MockPhoneDevice()
+        harness = PhoneHarness(device=device)
+
+        # 1. Open app
+        req1 = ActionRequest(action=ActionType.OPEN_APP, package_name="com.android.settings")
+        res1 = harness.execute_action(req1)
+        s1 = harness.observe()
+        tracer.record_step(req1, res1, s1, s1)
+
+        # 2. Swipe up
+        req2 = ActionRequest(action=ActionType.SWIPE, direction=SwipeDirection.UP, swipe_distance="short")
+        res2 = harness.execute_action(req2)
+        s2 = harness.observe()
+        tracer.record_step(req2, res2, s2, s2)
+
+        # 3. Press Key BACK
+        req3 = ActionRequest(action=ActionType.PRESS_KEY, key=KeyCode.BACK)
+        res3 = harness.execute_action(req3)
+        s3 = harness.observe()
+        tracer.record_step(req3, res3, s3, s3)
+
+        tracer.stop_recording()
+
+        # Replay
+        replay_device = MockPhoneDevice()
+        replay_harness = PhoneHarness(device=replay_device)
+        summary = TraceReplayer.replay_trace(replay_harness, trace_path)
+
+        assert summary.is_success is True
+        assert summary.total_steps == 3
+        assert summary.executed_steps == 3
+        assert summary.failed_steps == 0
+
+
+def test_session_tracer_restart_cleanup():
+    """Verifies that calling start_recording repeatedly safely closes previous file handles."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        t1 = os.path.join(tmpdir, "t1.trace.jsonl")
+        t2 = os.path.join(tmpdir, "t2.trace.jsonl")
+
+        tracer = SessionTracer(t1)
+        assert tracer.is_recording is True
+        tracer.start_recording(t2)
+        assert tracer.is_recording is True
+        assert tracer.output_path == t2
+        tracer.stop_recording()
+        assert tracer.is_recording is False
